@@ -24,7 +24,7 @@ for (i in 1:m) {
 	xi <- x[[i]]
 	pi <- p[[i]]
 	for (k in 1:d[i]) {
-		sigma <- c(1:ndimx[i])[-k], k)
+		sigma <- c((1:ndimx[i])[-k], k)
 		xi <- aperm(x[[i]], sigma)
 		dim(xi) <- c(lenx[i] / n / pi[k], n * pi[k])
 		vi <- Reduce(rev(v[[i]][-k]), kronecker)
