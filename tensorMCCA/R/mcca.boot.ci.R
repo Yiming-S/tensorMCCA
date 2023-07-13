@@ -150,7 +150,7 @@ if (any(c("basic", "percentile") %in% type)) {
 		out$basic <- matrix(2 * bootmean - percent.ci[,2:1], ncol = 2)
 }
 if 	("normal" %in% type) {
-	stat <- stat - out$bias 
+#	stat <- stat - out$bias 
 	z <- qnorm(1 - alpha)
 	halfwidth <- z * out$se
 	out$normal <- cbind(stat - halfwidth, stat + halfwidth)  
