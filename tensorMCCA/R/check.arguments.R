@@ -74,5 +74,5 @@ if (!is.null(w)) {
 	stopifnot(all(w >= 0) && any(w > 0))	
 }
 
-NULL
+# NULL
 }
