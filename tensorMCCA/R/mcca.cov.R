@@ -6,7 +6,7 @@ mcca.cov <- function(x, r = 1L, w = NULL, scope = c("block", "global"),
 {
 
 ## Check arguments
-test <- check.arguments(x = x, w = w, 
+check.arguments(x = x, w = w, 
 	v = if (is.list(init)) init else NULL)
 r <- as.integer(r)
 stopifnot(r > 0)
