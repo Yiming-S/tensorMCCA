@@ -38,7 +38,7 @@ for (i in 1:m) {
 	dim(x[[i]]) <- c(pp[i], n)
 	xbar <- rowMeans(x[[i]])
 	if (any(abs(xbar) > 1e-16)) 
-		x[[i]] <- sweep(x[[i]], 2, xbar, "-")
+		x[[i]] <- x[[i]] - xbar
 }
 
 ## Search method in combinatorial optimization
@@ -103,7 +103,7 @@ for (i in 1:m) {
 	}
 }
 if (any(reduce))	
-	rm(xmat, svdx)
+	rm(svdx)
 
 
 
@@ -194,7 +194,7 @@ for (i in flip)
 
 
 if (objective == "cov" && scope == "global") {
-	score <- canon.scores(x, v)
+	score <- canon.scores(x, v)[,,1]
 	s <- sqrt(m) * eigen(w * cov(score), TRUE)$vectors[,1]
 	sgns <- sign(s)
 	for (i in 1:m) {
