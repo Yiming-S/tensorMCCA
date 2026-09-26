@@ -169,10 +169,10 @@ for (l in 1:r) {
 	
 	## Run TMCCA
 	out <- if (optim == "bca") {
-		mcca.cor.bca(x = xl, v = v0, w = wl, ortho = cnstr,
+		mcca.cor.bca(x = xl, v = v0, w = w, ortho = cnstr,
 		sweep = sweep, maxit = maxit, tol = tol, verbose = verbose)
 	} else { 
-		mcca.gradient.scale(x = xl, v = v0, w = wl, 
+		mcca.gradient.scale(x = xl, v = v0, w = w, 
 			scope = "block", type = "var", maxit = maxit, 
 			tol = tol, verbose = verbose)
 	}
