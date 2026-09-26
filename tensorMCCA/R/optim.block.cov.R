@@ -81,42 +81,37 @@ if (all(abs(a) <= eps)) {
 
 ## SVD of A
 svda <- svd(a, nv = 0)
-pos <- (svda$d >= 1e-8 * svda$d[1])
-P <- svda$u[, pos, drop = FALSE]
-delta <- (svda$d[pos])^2 
-nrma <- delta[1]
+# pos <- (svda$d >= 1e-8 * svda$d[1])
+# P <- svda$u[, pos, drop = FALSE]
+# delta <- (svda$d[pos])^2 
+P <- svda$u
+delta <- (svda$d)^2 
 
 ## Change variables
 b <- as.vector(crossprod(P, b))
 
 ## Trivial case: no linear term in objective
-bzero <- (abs(b) <= eps)
-if (all(bzero)) {
+if (all(abs(b) <= eps)) {
 	v <- if (is.null(cc)) {
 		P[,1] } else { as.vector(qq %*% P[,1]) }
 	return(list(v))
 } 
 
-#@@@@ TO DO: if the components of 'b' associated to the largest singular values of 'a'
-#@@@@ are all zero AND if the root 'lambda' of the rational function below is smaller than 
-#@@@@ the largest original eigenvalue 'delta' (before removing those associated to 'bzero'),
-#@@@@ then the solution found is NOT a global maximizer. Need a fix in this case.   
-
-## Find Lagrange multiplier as root of rational function 
-bb <- b[!bzero]
-dd <- delta[!bzero]
-g <- function(lambda) sum( (bb/(lambda-dd))^2 ) - 1
-lb <- dd[1] + abs(bb[1])
-ub <- dd[1] + sqrt(sum(bb^2))
-lambda <- if (lb < ub) uniroot(g, c(lb,ub), tol = 1e-8)$root else ub
-
-## Recover primal solution 
-if (lambda >= nrma + eps) { 
-	v <- P[,!bzero,drop=FALSE] %*% (bb / (lambda - dd)) 
+## Find Lagrange multiplier 
+g <- function(lambda) sum( (b/(lambda-delta))^2 ) - 1
+e1 <- which(delta == delta[1])
+lb <- delta[1] + max(sqrt(sum(b[e1]^2)), eps)
+if (g(lb) >= 0) { # easy case
+	## Find root of rational function
+	ub <- delta[1] + sqrt(sum(b^2))
+	lambda <- if (lb < ub) uniroot(g, c(lb,ub), tol = 1e-8)$root else ub
+	## Recover primal solution 
+	v <- P %*% (b / (lambda - delta)) 
 } else { # hard/boundary case
-	v <- b / (nrma - delta)
-	e1 <- (delta == nrma)
-	v[e1] <- sqrt( (1 - sum(v[!e1]^2)) / sum(e1) ) 
+	lambda <- delta[1]
+	v <- b / (lambda - delta)
+	v[e1] <- 0
+	v[1] <- sqrt( 1 - sum(v^2) ) 
 	v <- P %*% v
 }
 
