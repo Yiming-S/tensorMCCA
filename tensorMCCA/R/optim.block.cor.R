@@ -34,6 +34,8 @@ if (length(v) == 1L) {
 # and to C'v = 0 
 ##########################################
 
+# Note: this problem has unbounded solutions is a is not in the range of B.
+# In TMCCA, a is in the range of B the actual problem at hand is gua 
 
 ## Inputs: 
 ## a:	objective (vector)
@@ -156,7 +158,7 @@ for (it in 1:maxit) {
 	
 	## Check convergence 
 	if (it > 1 && abs(objective - objective.old) <= 
-	    	tol * max(1, objective.old)) break
+	    max(1e-15, tol * abs(objective.old))) break
 }
 
 v
@@ -254,7 +256,7 @@ for (it in 1:maxit) {
 	
 	## Check convergence 
 	if (abs(objective - objective.old) <= 
-	    	tol * max(1, objective.old)) break
+	    max(1e-15, tol * abs(objective.old))) break
 }
 
 v
@@ -311,7 +313,7 @@ for (it in 1:maxit) {
 	
 	## Check convergence 
 	if (it > 1 && abs(objective - objective.old) <= 
-	    	tol * max(1, objective.old)) break
+	    max(1e-15, tol * abs(objective.old))) break
 }
 
 return(v)

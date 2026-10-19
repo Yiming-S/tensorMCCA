@@ -31,7 +31,7 @@ if (is.numeric(ortho)) {
 } else {
 	ortho <- match.arg(ortho)
 	if (ortho %in% c("cyclical", "random")) {
-		x <- lapply(p, function(dims) array(dim = c(dims, 1)))
+		x <- lapply(p, function(dims) array(0L, dim = c(dims, 1)))
 		ortho.mode <- set.ortho.mode(x, r, method = ortho)
 	}
 }
@@ -106,27 +106,27 @@ v
 }
 
 
-################################
-# Function to simulate all data 
-################################
+######################################
+# Function to simulate factor model
+# associated to covariance-based MCCA
+######################################
 
-simulate.factor.model <- function(dimx, r, scale.v = 1, score.cov, noise.cov, 
-	ortho.v = c("cyclical", "random", "alldim", "maxdim", "none"))
+# X(i,t) = sum(l=1:r) s(t,l) V(i,l) + E(i,t) with V(i,l) rank-1
+
+simulate.factor.model.cov <- function(n, p, r, scale.v = 1, score.cov = NULL, 
+	noise.cov = NULL, ortho.v = c("cyclical", "random", "alldim", "maxdim", "none"),
+	center = TRUE)
 {
 ## Data dimensions
-d <- sapply(dimx, length) - 1L
-m <- length(dimx)
-n <- sapply(dimx, tail, 1)
-if (any(n != n[1])) 
-	stop(paste("The last values of the components of",
-	"'dimx' must all be equal (= number of instances)."))
-n <- n[1]
-p <- mapply(head, dimx, d, SIMPLIFY = FALSE)
+d <- sapply(p, length)
+m <- length(p)
 pp <- sapply(p, prod)
 stopifnot(r >= 0)
-r0 <- r <- as.integer(r)
+r <- as.integer(r)
+if (is.character(ortho.v)) ortho.v <- match.arg(ortho.v)
 
 ## Preprocess score covariance
+if (is.null(score.cov)) score.cov <- 1
 SIGMA <- score.cov
 if (is.vector(SIGMA) && is.numeric(SIGMA)) {
 	SIGMA <- rep_len(SIGMA, r)
@@ -143,6 +143,7 @@ if (is.vector(SIGMA) && is.numeric(SIGMA)) {
 # stopifnot(is.numeric(SIGMA) || identical(dim(SIGMA), c(m,m,r)))
 
 ## Preprocess noise covariance
+if (is.null(noise.cov)) noise.cov <- 1
 PSI <- noise.cov
 if (is.numeric(PSI)) {
 	PSI <- rep_len(PSI, m)
@@ -157,9 +158,14 @@ if (is.numeric(PSI)) {
 
 ## Outputs
 x <- vector("list", m)
-v <- simulate.v(p, r, scale.v, ortho.v)
 if (r == 0) {
-	score <- NULL
+	v <- vector("list", m)
+	for (i in 1:m) v[[i]] <- lapply(p[[i]], numeric)
+} else {
+	v <- simulate.v(p, r, scale.v, ortho.v)
+}
+if (r == 0) {
+	score <- array(0, c(n, m, 1))
 } else if (is.vector(SIGMA)) {
 	score <- sapply(sqrt(SIGMA), function(sig) rep(rnorm(n, 0, sig), m))
 	dim(score) <- c(n, m, r)
@@ -180,7 +186,8 @@ for (i in 1:m) {
 	signal <- 0 
 	if (r > 0) {
 		for (l in 1:r) {
-			vil <- Reduce(kronecker, rev(v[[i,l]]))
+			vil <- outer.prod.nodim(v[[i,l]])
+			# vil <- Reduce(kronecker, rev(v[[i,l]]))
 			signal <- signal + tcrossprod(vil, score[,i,l])
 		}
 		dim(signal) <- c(p[[i]], n)
@@ -200,6 +207,114 @@ for (i in 1:m) {
 	}
 	dim(noise) <- c(p[[i]], n)		
 	x[[i]] <- signal + noise
+}
+
+if (center) {
+	for (i in 1:m) {
+		xbar <- rowMeans(x[[i]], dims = d[i])
+		x[[i]] <- sweep(x[[i]], 1:d[i], xbar)
+	}
+	sbar <- colMeans(score)
+	score <- sweep(score, 2:3, sbar)
+}
+
+list(x = x, v = v, score = score)
+}
+
+
+
+#######################################
+# Function to simulate factor model
+# associated to correlation-based MCCA
+#######################################
+
+# X(i,t) = A(i) [sum(l=1:p(i)) (s(t,l) + e(i,t,l)) V(i,l)] 
+# with A(i) square root covariance operator and V(i,l) rank-1
+# var(s(t,l) + e(i,t,l)) = 1
+
+simulate.factor.model.cor <- function(n, p, r, score.var, x.cov = NULL, 
+	ortho.v = c("cyclical", "random", "alldim", "maxdim", "none"),
+	center = TRUE)
+{
+## Data dimensions
+d <- sapply(p, length)
+m <- length(p)
+pp <- sapply(p, prod)
+stopifnot(r >= 0)
+r <- as.integer(r)
+if (is.character(ortho.v)) ortho.v <- match.arg(ortho.v)
+
+## Preprocess score variance
+stopifnot(is.numeric(score.var))
+stopifnot(all(score.var >= 0 & score.var <= 1))
+score.var <- rep_len(score.var, r)
+score.var <- sort(score.var, decreasing = TRUE)
+
+## Preprocess data covariance
+if (is.null(x.cov)) {
+	x.cov <- replicate(m, 1, FALSE)
+} else if (is.numeric(x.cov)) {
+	x.cov <- rep_len(x.cov, m)
+	x.cov <- as.list(t(x.cov))
+} else if (is.list(x.cov)) {
+	err <- paste("If 'x.cov' is specified as a list,",
+		"please make sure the list has the same length as 'p'",
+		"and contains square matrices with dimensions that match 'p'",
+		"(total number of tensor elements).")
+	test <- logical(4)
+	test["length"] <- all(length(x.cov == m))
+	test["type"] <- all(sapply(x.cov, is.matrix))
+	dims <- sapply(x.cov, dim)
+	test["dim"] <- all(dims[1,] == dims[2,])
+	test["size"] <- all(dims[1,] == pp)
+	if (!all(test)) stop(err)
+}
+
+## Calculate square root covariance matrices
+idx <- which(sapply(x.cov,is.matrix))
+for (i in idx)
+	x.cov[[i]] <- chol(x.cov[[i]])
+
+## Generate factor loadings
+if (r == 0) {
+	v <- vector("list", m)
+	for (i in 1:m) v[[i]] <- lapply(p[[i]], numeric)
+} else {
+	v <- simulate.v(p, r, 1, ortho.v)
+}
+
+## Generate factors = scores
+if (r > 0) {
+	s <- sapply(sqrt(score.var), function(sig) rep(rnorm(n, 0, sig), m))
+	eps <- sapply(sqrt(1-score.var), function(sig) rnorm(m*n, 0, sig))
+	score <- s + eps
+	dim(score) <- c(n,m,r)
+} else {
+	score <- NULL
+}
+
+## Generate data tensors
+x <- vector("list", m)
+for (i in 1:m) {	
+	xx <- matrix(rnorm(n*pp[i]), pp[i], n)
+	if (r > 0) {
+		vi <- sapply(v[i,], outer.prod.nodim)
+		xx <- xx + tcrossprod(vi, score[,i,] - crossprod(xx, vi))
+	}
+	x[[i]] <- if (is.matrix(x.cov[[i]])) {
+		crossprod(x.cov[[i]], xx)
+	} else x.cov[[i]] * xx
+	dim(x[[i]]) <- c(p[[i]], n)
+}
+
+## Center data and scores if needed
+if (center) {
+	for (i in 1:m) {
+		xbar <- rowMeans(x[[i]], dims = d[i])
+		x[[i]] <- sweep(x[[i]], 1:d[i], xbar)
+	}
+	sbar <- colMeans(score)
+	score <- sweep(score, 2:3, sbar)
 }
 
 list(x = x, v = v, score = score)

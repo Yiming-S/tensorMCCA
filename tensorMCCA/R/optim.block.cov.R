@@ -46,7 +46,7 @@ dim(b) <- NULL
 
 ## Trivial case: v scalar
 if (p == 1L) {
-	test <- (is.null(cc) || all(abs(cc) <= eps))
+	test <- (is.null(cc) || all(abs(unlist(cc)) <= eps))
 	v <- if (test && b >= 0) { 1
 	} else if (test && b < 0) { -1
 	} else { 0 }
@@ -81,124 +81,46 @@ if (all(abs(a) <= eps)) {
 
 ## SVD of A
 svda <- svd(a, nv = 0)
-pos <- (svda$d >= 1e-8 * svda$d[1])
-P <- svda$u[, pos, drop = FALSE]
-delta <- (svda$d[pos])^2 
-pp <- sum(pos) 
-# pp = number of optimization variables in transformed problem 
+# pos <- (svda$d >= 1e-8 * svda$d[1])
+# P <- svda$u[, pos, drop = FALSE]
+# delta <- (svda$d[pos])^2 
+P <- svda$u
+delta <- (svda$d)^2 
 
 ## Change variables
 b <- as.vector(crossprod(P, b))
 
 ## Trivial case: no linear term in objective
-bzero <- (abs(b) <= eps)
-if (all(bzero)) {
+if (all(abs(b) <= eps)) {
 	v <- if (is.null(cc)) {
 		P[,1] } else { as.vector(qq %*% P[,1]) }
 	return(list(v))
-}
-b[bzero] <- 0
+} 
 
-objective.best <- -Inf
-
-## Find stationary points of the Lagrange function in the case
-## where the Lagrange multiplier is an eigenvalue of AA'
-if (any(bzero)) {	
-	diff.delta <- outer(-delta, delta[bzero], "+")
-	equal.delta <- abs(diff.delta) <= eps
-	test <- (colSums((!bzero) | equal.delta) == pp)
-	if (any(test)) {
-		diff.delta <- diff.delta[, test, drop = FALSE]
-		equal.delta <- equal.delta[, test, drop = FALSE]
-		z <- b / diff.delta
-		z[equal.delta] <- 0
-		nrmz2 <- colSums(z^2)
-		test <- (nrmz2 <= 1)
-		if (any(test)) {
-			if (!all(test)) {
-				z <- z[,test, drop = FALSE]
-				equal.delta <- equal.delta[, test, drop = FALSE]
-				nrmz2 <- nrmz2[test]
-			}
-			nreplace <- colSums(equal.delta)
-			vals <- sqrt((1 - nrmz2) / nreplace)
-			z[equal.delta] <- rep.int(vals, nreplace)
-			objective <- colSums(delta * z^2) + 2 * colSums(b * z)
-			idx <- which.max(objective)
-			v <- P %*% z[,idx]
-			objective.best <- objective[idx]
-		}	
-	}			
+## Find Lagrange multiplier 
+g <- function(lambda) sum( (b/(lambda-delta))^2 ) - 1
+e1 <- which(delta == delta[1])
+lb <- delta[1] + max(sqrt(sum(b[e1]^2)), eps)
+if (g(lb) >= 0) { # easy case
+	## Find root of rational function
+	ub <- delta[1] + sqrt(sum(b^2))
+	lambda <- if (lb < ub) uniroot(g, c(lb,ub), tol = 1e-8)$root else ub
+	## Recover primal solution 
+	v <- P %*% (b / (lambda - delta)) 
+} else { # hard/boundary case
+	lambda <- delta[1]
+	v <- b / (lambda - delta)
+	v[e1] <- 0
+	v[1] <- sqrt( 1 - sum(v^2) ) 
+	v <- P %*% v
 }
 
-## Find stationary points when the Lagrange multipliers
-## are strictly between eigenvalues of AA'
-
-## Formulate stationarity equation with unique eigenvalues 
-i <- 1
-count <- 1
-bplus <- dplus <- numeric(0)
-while(i <= pp) {
-	idx <- which(abs(delta - delta[i]) <= eps)
-	dplus[count] <- delta[i]
-	bplus[count] <- sqrt(sum(b[idx]^2))
-	i <- max(idx) + 1
-	count <- count + 1	
-}
-bplus <- rev(bplus)
-dplus <- rev(dplus)
-nz <- (bplus > eps)
-bplus <- bplus[nz]
-dplus <- dplus[nz]
-pplus <- length(bplus)
-
-## Solve secular equation g(lambda) = 0 
-## where lambda = Lagrange multiplier
-g <- function(lambda) 
-{
-if (length(lambda) == 1)
-	return(sum((bplus/(lambda-dplus))^2) - 1)
-colSums((bplus / outer(-dplus, lambda, "+"))^2) - 1
-}
-lambda <- lambda.opt <- numeric()
-h <- 1.01 * sqrt(sum(bplus^2))
-lb <- c(dplus[1] - h, dplus + 1e-5)
-ub <- c(dplus - 1e-5, dplus[pplus] + h)
-grid.size <- 21
-for (i in 1:(pplus + 1)) {
-	## Grid search 
-	lam <- seq(lb[i], ub[i], length.out = grid.size)
-	glam <- g(lam)
-	sgn.glam <- sign(glam)
-	if (any(sgn.glam == 0)) {
-		lambda <- c(lambda, lam[sgn.lam == 0])
-		next }
-	sign.change <- (sgn.glam[-grid.size] != sgn.glam[-1])
-	## Refined search
-	if (any(sign.change)) {
-		idx <- which(sign.change)[1]
-		root <- uniroot(g, interval = c(lam[idx], lam[idx+1]),
-			tol = 1e-7)$root
-		lambda <- c(lambda, root) 			
-	} else {
-		lambda.opt <- c(lambda.opt, lam[which.min(abs(glam))])
-	}
-}
-if (length(lambda) == 0) { lambda <- lambda.opt }
-
-
-## Find corresponding solutions z and objective values
-z <- b / outer(-delta, lambda, "+")
-nrmz <- sqrt(colSums(z^2))
-z <- sweep(z, 2, nrmz, "/")
-objective <- colSums(delta * z^2) + 2 * colSums(b * z)
-idx <- which.max(objective)
-if (objective[idx] > objective.best) { v <- P %*% z[,idx] }
-v <- v / sqrt(sum(v^2))
 if (!is.null(cc)) v <- qq %*% v
 dim(v) <- NULL
 list(v)
 }
+
+
 
 
 	
@@ -236,7 +158,7 @@ if (!is.null(cc)) {
 azero <- all(a == 0) 
 if (azero && is.null(cc)) {
 	if (all(b == 0)) 
-		return(lapply(p, function(len) rep(1/sqrt(len), len)))
+		return(lapply(p, numeric))
 	svdb <- NULL
 	if (min(p) > 2) 
 		svdb <- tryCatch(svds(b, 1), error = function(e) NULL) 
@@ -317,7 +239,7 @@ for (it in 1:maxit) {
 	
 	## Check convergence 
 	if (it > 1 && abs(objective[it] - objective[it-1]) <= 
-	    	tol * max(1, objective[it-1])) break
+	    	max(1e-15, tol * objective[it-1])) break
 }
 
 return(v)
@@ -329,7 +251,8 @@ return(v)
 ######################################################
 # Maximize (1/n) sum_{t=1:n} < v,A(t) >^2 + 2 < v,B > 
 # subject to < v,v > = 1 and < C(l),v > = 0 for l=1,2,...
-# with A(t), B, v 3rd order tensor arrays, v rank-1
+# with A(t), B, C(l), v 3rd order tensor arrays, 
+# v rank-1
 ######################################################
 
 
@@ -344,7 +267,8 @@ optim3D.cov <- function(v, a, b, cc, maxit = 1000, tol = 1e-6)
 	
 ## Trivial case
 if (all(a == 0) && is.null(cc)) 
-	return(tnsr3d.rk1(b, scale = TRUE, maxit, tol))
+	return(tnsr3d.rk1(x = b, scale = TRUE, init = v, 
+		maxit = maxit, tol = tol))
 
 ## Data dimensions
 p <- dim(b)
@@ -434,7 +358,7 @@ for (it in 1:maxit) {
 	
 	## Check convergence 
 	if (it > 1 && abs(objective[it] - objective[it-1]) <= 
-	    	tol * max(1, objective[it-1])) break
+	    	max(1e-15, tol * objective[it-1])) break
 }
 
 return(v)
@@ -492,7 +416,7 @@ for (it in 1:maxit) {
 	
 	## Check convergence 
 	if (abs(objective - objective.old) <= 
-	    	tol * max(1, objective.old)) break
+	    max(1e-15, tol * abs(objective.old))) break
 }
 
 v

@@ -6,18 +6,18 @@
 \description{Perform multiple CCA by maximizing sum of covariances between canonical scores.}
 
 \usage{
-mcca.cov(x, r = 1, w = NULL, scale = c("block", "global"), 
-	ortho = c("score", "weight"), optim = c("bca", "grad.scale", 
-	"grad.rotate"), init = c("cca", "svd", "random"), maxit = 1000, 
-	tol = 1e-6, sweep = c("cyclical", "random"), control = list(), 
-	verbose = FALSE)
+mcca.cov(x, r = 1L, w = NULL, scope = c("block", "global"), 
+    ortho = c("score", "weight"), optim = c("bca", "grad.scale", 
+        "grad.rotate"), init = c("cca", "svd", "random"), maxit = 1000, 
+    tol = 1e-06, sweep = c("cyclical", "random"), control = list(), 
+    verbose = FALSE) 
 }
 
 \arguments{
 \item{x}{list of data arrays. All arrays must have the same size in their last dimension (= common instances, cases, or subjects).}
 \item{r}{number of sets of canonical components to calculate.}
 \item{w}{matrix of weights in objective function. Can be specified as a single number or as a square matrix with numbers of rows and columns equal to the length of \code{x}.}
-\item{scale}{character: should the norm constraints on canonical tensors apply to each individual dataset (\code{block}) or on average across datasets (\code{global})?}
+\item{scope}{character: should the norm constraints on canonical tensors apply to each individual dataset (\code{block}) or on average across datasets (\code{global})?}
 \item{ortho}{character: type of orthogonality constraints for higher order canonical components.}
 \item{optim}{character: optimization method.}
 \item{init}{character (initialization method) or list of initial values for the canonical tensors.}
@@ -33,7 +33,7 @@ The objective weights \code{w} can be specified as a single positive number (to 
 
 For each data array, the number \code{r} of canonical components cannot exceed the number of cases, say \eqn{n}, or the number of elements in each image (the dataset containing \eqn{n} images). If needed, \code{r} will be reduced to meet these limits. 
 
-The scaling constraint \code{scale} can take the value \code{block} (each canonical tensor must have norm equal to 1) or \code{global} (on average across datasets, the canonical tensors have squared norm equal to 1). (at each stage \eqn{1,...,r} of the MCCA). 
+The scaling constraint \code{scope} can take the value \code{block} (each canonical tensor must have norm equal to 1) or \code{global} (on average across datasets, the canonical tensors have squared norm equal to 1). (at each stage \eqn{1,...,r} of the MCCA). 
 
 The orthogonality constraints \code{ortho} for estimating higher order canonical components (\eqn{2,...,r}) can apply either to canonical scores (\code{score}, defined as \eqn{m} data block-specific scores for each case if \code{scale=block} or as a single global score if \code{scale=global}) or to canonical tensors (\code{weight}). Either way, the constraints are enforced by deflating the data arrays/tensors.  
 
@@ -62,5 +62,14 @@ A LIST with components
 \code{\link{mcca.cor}}, \code{\link{mcca.init.cca}}, \code{\link{mcca.init.svd}}, \code{\link{mcca.init.random}}
 }
 
-% \examples{
-% }
+\examples{
+## Simulate three tensor datasets measured on 100 cases with 4 common factors
+m <- 3 
+n <- 100 
+r <- 4 
+dimx <- list(c(10,n), c(5,10,n), c(6,8,10,n)) 
+sim <- simulate.factor.model(dimx, r, score.cov = r:1, noise.cov = .5, ortho.v = 1)
+x <- sim$x
+
+fit <- mcca.cov(x, r, verbose = TRUE)
+}

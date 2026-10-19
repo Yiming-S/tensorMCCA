@@ -1,7 +1,7 @@
 export(
 "canon.scores",
 "check.arguments",
-"deflate.x",
+"hessian",
 "hosvd",
 "kkt",
 "mcca.boot",
@@ -14,9 +14,11 @@ export(
 "objective.cor",
 "objective.cov",
 "objective.gradient",
+"outer.prod",
 "permutation.test",
 "scale.v",
-"simulate.factor.model",
+"simulate.factor.model.cor",
+"simulate.factor.model.cov",
 "simulate.v",
 "tnsr.mat.prod",
 "tnsr.vec.prod",
@@ -27,6 +29,5 @@ export(
 "tnsr.rk1.nrm"
 )
 importFrom("MASS", "ginv")
-importFrom("parallel", "mclapply")
+importFrom("foreach", "foreach")
 importFrom("RSpectra", "svds", "eigs_sym")
-importFrom("geigen", "geigen")

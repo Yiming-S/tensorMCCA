@@ -1,58 +1,118 @@
-######################################
-# Function to calculate KKT residuals
-######################################
+###########################################
+# Function to calculate gradients of 
+# objective and constraint functions, 
+# Lagrange multipliers, and KKT residuals 
+##########################################
 
-kkt <- function(x, object)
+kkt <- function(x, fit)
 {
 ## Check compatibility of arguments
-test <- check.arguments(x, object$v, object$call.args$w)
+test <- check.arguments(x, fit$v, fit$call.args$w)
 
-## Extract fitted objects
-v <- object$v[,1]
-score <- object$block.score[,,1]
-w <- object$call.args$w
-objective <- object$objective[1]
+## Extract relevant quantities
+v <- fit$v
+score <- fit$block.score
+w <- fit$call.args$w
+scope <- fit$call.args$scope
+ortho <- fit$call.args$ortho.type
+objective <- fit$call.args$objective.type
 
 ## Calculate data dimensions
 m <- length(x)
-dimx <- lapply(x, dim)
-d <- sapply(dimx, length) - 1L
+dimx <- lapply(x, dimfun)
+d <- sapply(dimx, length) - 1L 
+p <- mapply(head, dimx, d, SIMPLIFY = FALSE)
+p[d == 0] <- 1
 n <- tail(dimx[[1]], 1L)
+r <- NCOL(v)
 
-## Precalculate Lagrange multipliers
-objective.type <- object$call.args$objective.type
-scale <- object$call.args$scale
-if (objective.type == "cov" && scale == "global") {
-	lambda <- vector("list", m)
+
+
+## Auxiliary function for gradient calculation
+gradfun <- function(x, y = NULL) {
+if (is.null(y)) y <- x
+d <- length(x)
+if (d == 1) return(y[[1]])
+cp <- numeric(d)
+for (k in 1:d) cp[k] <- sum(x[[k]] * y[[k]])
+out <- vector("list", d)
+for (k in 1:d) out[[k]] <- prod(cp[-k]) * y[[k]]
+unlist(out)	
+}
+
+
+## Calculate gradients
+sump <- sapply(p, sum)
+cumsump <- cumsum(c(0, sump))
+pp <- cumsump[m+1]
+grad.obj <- matrix(0, pp, r)
+grad.cnstr <- vector("list", r)
+score <- score / n
+if (ortho == "score" && scope == "global") 
+	global.score <- fit$global.score / n
+for (l in 1:r) {
+	grad.cnstr[[l]] <- switch(scope, 
+		block = matrix(0, pp, l*m), 
+		global = matrix(0, pp, l))
 	for (i in 1:m) {
-		if (d[i] == 1) {
-			lambda[[i]] <- rep(objective / m, d[i])
-		} else {
-			sqnrmv <- sapply(v[[i]], function(x) sum(x^2))
-			for (k in 1:d[i]) 
-				lambda[[i]][k] <- objective * prod(sqnrmv[-k]) / m 
-		}
-	}			
-} else {
-	lambda <- colSums(crossprod(score) * w)  / n
-	lambda <- mapply(rep, lambda, d, SIMPLIFY = FALSE)
-}
+		idxrow <- (cumsump[i]+1):cumsump[i+1]
+		idxcol <- switch(scope, 
+			block = seq(i, by = m, len = l),
+			global = 1:l)
 	
-## Calculate KKT residuals 
-residuals <- vector("list", m)
-for (i in 1:m) {
-	for (k in 1:d[i]) {
-		## Calculate gradient of objective function
-		tvprod <- tnsr.vec.prod(x[[i]], v[[i]][-k], (1:d[i])[-k])
-		grad <- tvprod %*% score %*% (w[,i] / n) 		
-
-		residuals[[i]][[k]] <- if (objective.type == "cov") {
-			grad - lambda[[i]][k] * v[[i]][[k]]
+		## Gradient of objective function
+		tvprod <- vector("list", d[i])
+		scorei <- score[,,l] %*% w[,i] 
+		for (k in 1:d[i]) {
+			tvprod[[k]] <- tnsr.vec.prod(x = x[[i]], 
+				v = v[[i,l]][-k], modes = (1:d[i])[-k])
+			if (p[[i]][k] == 1) dim(tvprod[[k]]) <- c(1,n)
+		}
+		tvprod <- do.call(rbind, tvprod)
+		dim(tvprod) <- c(sump[i], n)
+		# tvprod <- tvprod - rowMeans(tvprod)
+		grad.obj[idxrow,l] <- tvprod %*% scorei
+		
+		## Gradient of scaling constraint
+		mat <- matrix(nrow = sump[i], ncol = l)
+		mat[,l] <- if (objective == "cor") {
+			tvprod %*% score[,i,l]	
+		} else if (objective == "cov" && scope == "block") {
+			unlist(v[[i,l]])
 		} else {
-			grad - lambda[[i]][k] * (tvprod %*% score[,i] / n)	
-		}		
-	}	
+			gradfun(v[[i,l]])
+		}
+			
+		## Gradient of orthogonality constraints
+		if (l > 1) {
+			if (ortho == "weight") {
+				for (ll in 1:(l-1))
+					mat[,ll] <- gradfun(v[[i,l]], v[[i,ll]])			
+			} else if (ortho == "score" && scope == "block") {
+				mat[,1:(l-1)] <- tvprod %*% score[,i,1:(l-1)]
+			} else { # ortho == "score" && scope == "global"
+				mat[,1:(l-1)] <- tvprod %*% global.score[,i,1:(l-1)] 
+			}		
+		}
+		
+		grad.cnstr[[l]][idxrow,idxcol] <- mat
+	}
 }
 
-residuals
+## Regress objective gradient against constraints gradients
+coefs <- vector("list", r)
+residuals <- matrix(0, pp, r)
+for (l in 1:r) {
+	reg <- suppressWarnings(
+		lsfit(grad.cnstr[[l]], grad.obj[,l], NULL, FALSE))
+	coefs[[l]] <- reg$coefficients
+	if (scope == "block") dim(coefs[[l]]) <- c(m,l)
+	residuals[,l] <- reg$residuals
 }
+
+
+list(grad.objective = grad.obj, grad.constraints = grad.cnstr, 
+	multipliers = coefs, residuals = residuals)	
+}
+
+

@@ -1,34 +1,38 @@
-canon.scores <- function(x, v, check.args = TRUE)
+canon.scores <- function(x, v)
 {
 if (!is.list(x)) x <- list(x)
 if (!is.list(v)) v <- list(v)
-if (check.args) {
-	stopifnot(is.vector(v) || is.matrix(v))
-	test1 <- (is.vector(v) && length(v) == length(x))
-	test2 <- (is.matrix(v) && nrow(v) == length(x))
-	if (!(test1 || test2)) {
-		stop(paste("'v' must either be a vector of type 'list'",
-		"having same length as 'x' or a matrix of type 'list'",
-		"whose number of rows equals the length of 'x'")) }
-}
+stopifnot(is.vector(v) || is.matrix(v))
+test1 <- (is.vector(v) && length(v) == length(x))
+test2 <- (is.matrix(v) && nrow(v) == length(x))
+if (!(test1 || test2)) {
+	stop(paste("'v' must either be a vector of type 'list'",
+	"having same length as 'x' or a matrix of type 'list'",
+	"whose number of rows equals the length of 'x'")) }
+
 m <- length(x)
-dimx <- lapply(x, dim)
-n <- tail(dimx[[1]], 1) 
-d <- sapply(dimx, length) - 1  
-if (is.vector(v)) {
-	score <- matrix(nrow = n, ncol = m)
-	for (i in 1:m) 
-		score[, i] <- tnsr.vec.prod(x[[i]], v[[i]], 1:d[i])
-} else {
-	r <- ncol(v)
-	score <- array(dim = c(n, m, r))
-	for (i in 1:m) {
-		for (l in 1:r) {
-			score[, i, l] <- tnsr.vec.prod(x[[i]], v[[i,l]], 1:d[i])
-		}
+for (i in 1:m) {
+	if (is.vector(x[[i]])) {
+		dim(x[[i]]) <- c(1, length(x[[i]]))
 	}
 }
-score	
+dimx <- lapply(x, dim)
+n <- tail(dimx[[1]], 1) 
+d <- sapply(dimx, length) - 1L 
+if (is.null(dim(v))) {
+	dim(v) <- c(length(v), 1)
+}
+r <- ncol(v)
+score <- array(dim = c(n, m, r))
+for (i in 1:m) {
+	for (l in 1:r) {
+		score[, i, l] <- tnsr.vec.prod(x[[i]], v[[i,l]], 1:d[i])
+	}
+}
+
+score <- sweep(score, 2:3, colMeans(score), "-")
+score
+
 }
 
 
